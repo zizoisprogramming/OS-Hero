@@ -62,12 +62,17 @@ int main(int argc, char * argv[])
     printf("at Time %d Recieved LAST %d\n", time, RecievedID);
     exit(0);
 
-
     //destroyClk(true);
 }
 // The RR scheduling function
 int RR() {
-
+    // Initialize the process
+    // needs functions
+    // -> Initialize() to start the process and set the PCB
+    // -> saveState() to save in PCB
+    // make process control block
+    // deleteData() to clean up the process
+    // report-atk
 }
 
 int recieveMSG(int ProcessQ, int time)
