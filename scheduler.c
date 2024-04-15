@@ -16,12 +16,20 @@ struct msgbuff
     long mtype;
     struct processData data;
 };
+
+struct Node* head = NULL;
+struct Node* tail = NULL;
+int algo;
+
+void callAlgo();
+int recieveMSG();
+int RR();
 int main(int argc, char * argv[])
 {
     initClk();
     
     //TODO implement the scheduler :)
-    //upon termination release the clock resources.
+    //upon termination release the clock resources. "ZIZO, DON'T FORGET"
     //print arguments
     for(int i=0; i<argc; i++)
     {
@@ -29,50 +37,25 @@ int main(int argc, char * argv[])
     }
     //arg 1 = choosen algorithm (HPF, SRTN, RR) -> 1, 2, 3
     //arg 2 = quantum for RR (if RR is choosen)
+    algo = atoi(argv[1]);
+
     key_t key_id = 17;
     int ProcessQ = msgget(key_id, 0666 | IPC_CREAT);
-    struct Node* head = NULL;
-    struct Node* tail = NULL;
+    
     int RecievedID = 0;
     int time = 0;
     while(RecievedID != -2)     // -2 is the last process           //will be changed
     {
-        if (getClk() > time)
+        int time2 = getClk();
+        if (time2 > time)
         {
-            time = getClk();
+            time = time2;
             RecievedID = 0;
-            while (RecievedID != -1 && RecievedID != -2)    // -1 is the last process at this timestamp
-            {
-                struct msgbuff message;
-                int rec_val = -1;
-                while (rec_val == -1)
-                {
-                    rec_val = msgrcv(ProcessQ, &message, sizeof(message.data), 0, !IPC_NOWAIT);
-                    if(rec_val == -1)
-                        printf("wtf");
-                }
-                RecievedID = message.data.id;
-                printf("at Time %d Recieved ID: %d\n", time, RecievedID);
-
-                if (RecievedID != -1 && RecievedID != -2)
-                {
-                    struct Node* newNode = (struct Node*)malloc(sizeof(struct Node));
-                    newNode->data = message.data;
-                    newNode->next = NULL;
-                    if (head == NULL)
-                    {
-                        head = newNode;
-                        tail = newNode;
-                    }
-                    else
-                    {
-                        tail->next = newNode;
-                        tail = newNode;
-                    }
-                }
-            
-            }           
-            //////////// Start Scheduling for this timestamp    ////////////
+            // Recieve the message in RecievedID
+            RecievedID = recieveMSG(ProcessQ, time); 
+            // Start Scheduling for this timestamp   
+            // Choose Algo
+            callAlgo(); // specific algo handles from here
         }
         
     }
@@ -81,4 +64,57 @@ int main(int argc, char * argv[])
 
 
     //destroyClk(true);
+}
+// The RR scheduling function
+int RR() {
+
+}
+
+int recieveMSG(int ProcessQ, int time)
+{
+    int RecievedID = 0;
+    while (RecievedID != -1 && RecievedID != -2)    // -1 is the last process at this timestamp
+    {
+        struct msgbuff message;
+        int rec_val = -1;
+        while (rec_val == -1)
+        {
+            rec_val = msgrcv(ProcessQ, &message, sizeof(message.data), 0, !IPC_NOWAIT);
+            if(rec_val == -1)
+                printf("-1 here");
+        }
+        RecievedID = message.data.id;
+        printf("at Time %d Recieved ID: %d\n", time, RecievedID);
+
+        if (RecievedID != -1 && RecievedID != -2)
+        {
+            struct Node* newNode = (struct Node*)malloc(sizeof(struct Node));
+            newNode->data = message.data;
+            newNode->next = NULL;
+            if (head == NULL)
+            {
+                head = newNode;
+                tail = newNode;
+            }
+            else
+            {
+                tail->next = newNode;
+                tail = newNode;
+            }
+        }
+    
+    } 
+    return RecievedID;
+}
+
+void callAlgo(){
+    if(algo == 1) {
+        // call SPF
+    }
+    else if(algo == 2) {
+        // call HPF
+    }
+    else {
+        // call RR
+    }
 }
