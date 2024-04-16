@@ -40,14 +40,15 @@ struct Node* tail = NULL;
 struct nodePCB* headPcb = NULL;
 struct nodePCB* tailPcb = NULL;
 
-int algo;
+int algo; // 1 -> HPF  2 -> SRTN  3 -> RR
 
 void callAlgo();
-int recieveMSG();
+int recieveMSG(int, int);
 int RR();
-void setPCB(struct nodePCB*);
 void savePCB(struct nodePCB*,int,int,int,int);
 void insertProcess(struct msgbuff*);
+void insertPcb(struct PCB *);
+void makeProcess(struct msgbuff*, int);
 int main(int argc, char * argv[])
 {
     initClk();
@@ -97,6 +98,7 @@ int RR() {
     // make process control block
     // deleteData() to clean up the process
     // report-atk
+    return 0;
 }
 
 void insertProcess(struct msgbuff* message) {
@@ -130,10 +132,27 @@ int recieveMSG(int ProcessQ, int time)
         }
         RecievedID = message.data.id;
         printf("at Time %d Recieved ID: %d\n", time, RecievedID);
-
         if (RecievedID != -1 && RecievedID != -2)
         {
             insertProcess(&message);
+            int newProcessID = fork();
+            
+            if(newProcessID == -1) {
+                perror("Error in fork.\n");
+            }
+            else if(newProcessID == 0) {
+                printf("child\n");
+                char runtimechar[10];
+                sprintf(runtimechar,"%d",message.data.runtime);
+                char * args[] = {"./process", runtimechar,NULL};
+                execvp(args[0], args) == -1;
+                printf("Execute error.\n");
+            }
+            else {
+                // insert in Process Table
+                printf("parent");
+                makeProcess(&message, RecievedID);
+            }
         }
     
     } 
@@ -149,20 +168,24 @@ void callAlgo(){
     }
     else {
         // call RR
+        RR();
     }
 }
 
-void insertPcb(struct nodePCB * ptr)
+void insertPcb(struct PCB * processBlock)
 {
+    struct nodePCB* newProcess = (struct nodePCB*)malloc(sizeof(struct nodePCB));
+    newProcess->data = *processBlock;
+    newProcess->next = NULL;
     if (headPcb == NULL)
     {
-        headPcb = ptr;
-        tailPcb = ptr;
+        headPcb = newProcess;
+        tailPcb = newProcess;
     }
     else
     {
-        tailPcb->next = ptr;
-        tailPcb = ptr;
+        tailPcb->next = newProcess;
+        tailPcb = newProcess;
     }
 }
 
@@ -171,4 +194,18 @@ void savePCB(struct nodePCB* ptr, int remaining, int state, int waiting, int run
     ptr->data.running = running;
     ptr->data.state = state;
     ptr->data.waiting = waiting;
+}
+
+void makeProcess(struct msgbuff* message, int newProcessID) {
+    // insert in Process Table
+    struct PCB processBlock;
+    processBlock.id = newProcessID; // save the id
+    processBlock.arrival = message->data.arrival;
+    processBlock.priority = message->data.priority; 
+    processBlock.remaining = message->data.runtime; // still didn't run
+    processBlock.running = 0; // not a single second yet
+    processBlock.runtime = message->data.runtime; // run time m4 m7taga
+    processBlock.state = 0; // sleep for now
+    processBlock.waiting = 0; // set waiting time
+    insertPcb(&processBlock);
 }
