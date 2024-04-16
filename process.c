@@ -24,6 +24,7 @@ int main(int argc, char * argv[])
 void handler(int signum) {
 
     remainingtime--;
+    printf("Remaining time decremented %d", remainingtime);
     // re-bind
     signal(SIGUSR1, handler);    
 }
