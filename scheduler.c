@@ -11,6 +11,24 @@ struct Node
     struct processData data;
     struct Node *next;
 };
+struct PCB
+{
+    int id;
+    int arrival; // arrival time
+    int runtime; // time require to run
+    int running; // time in execution
+    int remaining; // time left
+    int waiting; // time blocked or sleeped
+    int priority;
+    int state;
+    // 0 -> sleep
+    // 1 -> running
+};
+struct nodePCB 
+{
+    struct PCB data;
+    struct nodePCB *next;
+};
 struct msgbuff
 {
     long mtype;
@@ -19,11 +37,17 @@ struct msgbuff
 
 struct Node* head = NULL;
 struct Node* tail = NULL;
+struct nodePCB* headPcb = NULL;
+struct nodePCB* tailPcb = NULL;
+
 int algo;
 
 void callAlgo();
 int recieveMSG();
 int RR();
+void setPCB(struct nodePCB*);
+void savePCB(struct nodePCB*,int,int,int,int);
+void insertProcess(struct msgbuff*);
 int main(int argc, char * argv[])
 {
     initClk();
@@ -75,6 +99,22 @@ int RR() {
     // report-atk
 }
 
+void insertProcess(struct msgbuff* message) {
+    struct Node* newNode = (struct Node*)malloc(sizeof(struct Node));
+    newNode->data = message->data;
+    newNode->next = NULL;
+    if (head == NULL)
+    {
+        head = newNode;
+        tail = newNode;
+    }
+    else
+    {
+        tail->next = newNode;
+        tail = newNode;
+    }
+}
+
 int recieveMSG(int ProcessQ, int time)
 {
     int RecievedID = 0;
@@ -93,19 +133,7 @@ int recieveMSG(int ProcessQ, int time)
 
         if (RecievedID != -1 && RecievedID != -2)
         {
-            struct Node* newNode = (struct Node*)malloc(sizeof(struct Node));
-            newNode->data = message.data;
-            newNode->next = NULL;
-            if (head == NULL)
-            {
-                head = newNode;
-                tail = newNode;
-            }
-            else
-            {
-                tail->next = newNode;
-                tail = newNode;
-            }
+            insertProcess(&message);
         }
     
     } 
@@ -122,4 +150,25 @@ void callAlgo(){
     else {
         // call RR
     }
+}
+
+void insertPcb(struct nodePCB * ptr)
+{
+    if (headPcb == NULL)
+    {
+        headPcb = ptr;
+        tailPcb = ptr;
+    }
+    else
+    {
+        tailPcb->next = ptr;
+        tailPcb = ptr;
+    }
+}
+
+void savePCB(struct nodePCB* ptr, int remaining, int state, int waiting, int running) {
+    ptr->data.remaining = remaining;
+    ptr->data.running = running;
+    ptr->data.state = state;
+    ptr->data.waiting = waiting;
 }
