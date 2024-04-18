@@ -37,6 +37,14 @@ struct msgbuff
     struct processData data;
 };
 
+union Semun
+{
+    int val;               /* Value for SETVAL */
+    struct semid_ds *buf;  /* Buffer for IPC_STAT, IPC_SET */
+    unsigned short *array; /* Array for GETALL, SETALL */
+    struct seminfo *__buf; /* Buffer for IPC_INFO (Linux-specific) */
+};
+
 struct Node* head = NULL;
 struct Node* tail = NULL;
 struct nodePCB* headPcb = NULL;
@@ -51,18 +59,31 @@ int algo; // 1 -> HPF  2 -> SRTN  3 -> RR
 int runningQuantum;
 bool dead = false;
 
-void callAlgo(int);
+int remshmId;
+int remSemId;
+int * remAddr;
+
+void initializeSem();
+void initializeMem();
+void detachMem();
+bool callAlgo(int);
 int recieveMSG(int, int);
-int RR(int);
-void savePCB(struct nodePCB*,int *);
+bool RR(int);
+void savePCB(struct nodePCB*);
+void preempt();
 struct Node * insertProcess(struct msgbuff*);
 struct nodePCB * insertPcb(struct PCB *);
 struct nodePCB * makeProcess(struct msgbuff*, int ,int);
-void childDead(int signum);
+void childDead();
+void intHandler(int sigNum);
+void loadCache(struct nodePCB* );
+
 int main(int argc, char * argv[])
 {
     initClk();
-    signal(SIGCHLD, childDead);
+    signal(SIGINT, intHandler);
+    initializeMem();
+    initializeSem();
     //TODO implement the scheduler :)
     //upon termination release the clock resources. "ZIZO, DON'T FORGET"
     //print arguments
@@ -92,56 +113,53 @@ int main(int argc, char * argv[])
             // Recieve the message in RecievedID
             RecievedID = recieveMSG(ProcessQ, time); 
             // Start Scheduling for this timestamp   
-            // Choose Algo
             callAlgo(time); // specific algo handles from here
         }
     }
-    while(1) {
+    printf("at Time %d Recieved LAST %d\n", time, RecievedID);
+    bool finish = false; // the loop variable
+    while(!finish) { // while algo still running
         int time2 = getClk();
         if (time2 > time)
         {
             // Choose Algo
             time = time2;
-            callAlgo(time); // specific algo handles from here
+            finish = callAlgo(time); // specific algo handles from here
         }
     }
-    printf("at Time %d Recieved LAST %d\n", time, RecievedID);
-    exit(0);
-
+    printf("at Time %d Finished\n", time);
+   
+    shmctl(remshmId, IPC_RMID, NULL);
+    printf("Terminating the shared memory!\n");
+    semctl(remSemId,0, IPC_RMID);
+    printf("Terminating the semaphore!\n");
     //destroyClk(true);
 }
 // The RR scheduling function
-int RR(int now) {
-    // Initialize the process
-    // needs functions
-    // -> Initialize() to start the process and set the PCB
-    // -> saveState() to save in PCB
-    // make process control block
-    // deleteData() to clean up the process
-    // report-atk
+bool RR(int now) {
     if(run) { 
         // if something is running
-        kill(runCache[0],SIGUSR1); // real ID
+        kill(runCache[0],SIGUSR1); // real ID 
+        down(remSemId); // wait till the process decrements
+
         runCache[1]++; // running time
-        runCache[2]--; // remaining time
-        
-        runningQuantum--;
-        printf("running");
+        runCache[2] = *remAddr; // remaining time
+        if(runCache[2] == 0) {
+            int status;
+            if(waitpid(runCache[0],&status,0) == -1) // wait for the exit code
+                printf("Error in wait.\n"); 
+            else 
+                childDead(); // execute the dying algo
+        } 
+        runningQuantum--;    // a quantum is finished    
         if(runningQuantum == 0 && !dead) {
-            runCache[3] += now - run->mirror->data.lastRun;
+           
+            runCache[3] += now - run->mirror->data.lastRun; // update the waiting time
             runCache[4] = 0; // state = 0 aka. skeeping
             runCache[5] = now; // last run for waiting calcultions
-            savePCB(run->mirror, runCache); // save the state
-            if(tail) {
-                tail->next = run;
-                run->next = NULL;
-                tail = tail->next;
-            }
-            else {
-                head = run;
-                tail = run;
-            }
-            printf("Quantum finished for process %d.\n", runCache[0]);
+            printf("Quantum finished for process %d.\n", runCache[0]);             
+            savePCB(run->mirror);
+            preempt(); // update the list
             run = NULL; // no current running
         }
         if(dead) {
@@ -153,23 +171,23 @@ int RR(int now) {
         if(head) {
             runningQuantum = quantum; // reset the quantum
             run = head; // a new head
-            head = head->next;
+            head = head->next; // update
+            if(head == NULL)
+                tail = NULL;
             struct nodePCB * runPCB = run->mirror; // get the PCB
+            
             // load the data into the running cache
-            runCache[0] = runPCB->data.realId;
-            runCache[1] = runPCB->data.running;
-            runCache[2] = runPCB->data.remaining;
-            runCache[3] = runPCB->data.waiting;
-            runPCB->data.state = 1;
-            runCache[4] = runPCB->data.state;
-            runCache[5] = runPCB->data.lastRun;
-            if(runCache[5] == 0)
+            loadCache(runPCB);
+            if(runCache[5] == 0) // just for printing
                 printf("Inserted process %d with remaining %d.\n", run->data.id, runCache[2]);
             else
                 printf("Rescheduling process %d with remaining %d.\n", run->data.id, runCache[2]);
         }
+   
     }
-    return 0;
+    if(!head && !run) // if the list is empty
+        return true; // finish
+    return false;
 }
 
 struct Node * insertProcess(struct msgbuff* message) {
@@ -199,31 +217,31 @@ int recieveMSG(int ProcessQ, int time)
         while (rec_val == -1)
         {
             rec_val = msgrcv(ProcessQ, &message, sizeof(message.data), 0, !IPC_NOWAIT);
-            if(rec_val == -1)
-                printf("-1 here");
         }
         RecievedID = message.data.id;
         printf("at Time %d Recieved ID: %d\n", time, RecievedID);
         if (RecievedID != -1 && RecievedID != -2)
         {
-            struct Node * ptr = insertProcess(&message);
+            
             int newProcessID = fork();
             
             if(newProcessID == -1) {
                 perror("Error in fork.\n");
             }
             else if(newProcessID == 0) {
-                printf("child\n");
+                printf("child\n"); // child code
                 char runtimechar[10];
-                sprintf(runtimechar,"%d",message.data.runtime);
-                char * args[] = {"./process", runtimechar,NULL};
-                execvp(args[0], args);
-                printf("Execute error.\n");
+                sprintf(runtimechar,"%d",message.data.runtime); // just a function that converts int to char
+                char * args[] = {"./process", runtimechar,NULL}; // prepare the arguments
+                execvp(args[0], args); // run 
+                printf("Execute error.\n"); // if reached here then error
             }
             else {
                 // insert in Process Table
-                printf("parent");
-                ptr->mirror = makeProcess(&message, RecievedID, newProcessID);
+                printf("parent\n"); // parent code
+                while(*remAddr != message.data.runtime); // wait till creation
+                struct Node * ptr = insertProcess(&message); // insert in ready queue
+                ptr->mirror = makeProcess(&message, RecievedID, newProcessID); // insert PCB
             }
         }
     
@@ -231,7 +249,7 @@ int recieveMSG(int ProcessQ, int time)
     return RecievedID;
 }
 
-void callAlgo(int time){
+bool callAlgo(int time){
     if(algo == 1) {
         // call SPF
     }
@@ -240,7 +258,7 @@ void callAlgo(int time){
     }
     else {
         // call RR
-        RR(time);
+        return RR(time);
     }
 }
 
@@ -259,17 +277,18 @@ struct nodePCB * insertPcb(struct PCB * processBlock)
     {
         tailPcb->next = newProcess;
         newProcess->previous = tailPcb;
-        tailPcb = newProcess;
+        tailPcb = tailPcb->next;
     }
     return newProcess;
 }
 
-void savePCB(struct nodePCB* ptr, int * cache) {
-    ptr->data.running = cache[1];
-    ptr->data.remaining = cache[2];
-    ptr->data.waiting = cache[3];
-    ptr->data.state = cache[4];
-    ptr->data.lastRun = cache[5];
+void savePCB(struct nodePCB* ptr) {
+    ptr->data.running = runCache[1];
+    ptr->data.remaining = runCache[2];
+    ptr->data.waiting = runCache[3];
+    ptr->data.state = runCache[4];
+    ptr->data.lastRun = runCache[5];
+    printf("Saving PCB.\n");
 }
 
 struct nodePCB * makeProcess(struct msgbuff* message,int id, int newProcessID) {
@@ -284,7 +303,7 @@ struct nodePCB * makeProcess(struct msgbuff* message,int id, int newProcessID) {
     processBlock.state = 0; // sleep for now
     processBlock.waiting = 0; // set waiting time
     processBlock.lastRun = 0;
-    processBlock.realId = newProcessID;
+    processBlock.realId = newProcessID; // el id bta3 el system
     return insertPcb(&processBlock);
 }
 
@@ -301,12 +320,86 @@ void removeBlock() {
     }
 }
 
-void childDead(int sigNum) {
+void childDead() {
     removeBlock();
     free(run->mirror);
     dead = true;
     free(run);
     run = NULL;
+    printf("terminated...\n");
     // output file stuff
-    signal(SIGCHLD, childDead);
+}
+
+void initializeSem() {
+    union Semun semun;
+
+    remSemId = semget(SEMKEY, 1, 0666 | IPC_CREAT);
+
+    if (remSemId == -1)
+    {
+        perror("Error in create sem");
+        exit(-1);
+    }
+
+    semun.val = 0; /* initial value of the semaphore, Binary semaphore */
+    if (semctl(remSemId, 0, SETVAL, semun) == -1)
+    {
+        perror("Error in semctl");
+        exit(-1);
+    }
+}
+
+void initializeMem() {
+    remshmId = shmget(MEM_KEY, sizeof(int), IPC_CREAT | 0666);
+
+    if (remshmId == -1)
+    {
+        perror("Error in create");
+        exit(-1);
+    }
+    else
+        printf("\nShared memory ID = %d\n", remshmId);
+            
+    remAddr = shmat(remshmId, NULL, 0);
+    if (remAddr == (void *)-1)
+    {
+        perror("Error in attach in writer");
+        exit(-1);
+    }
+    *remAddr = -1;
+}
+
+void detachMem() {
+    shmdt(remAddr);
+}
+
+void intHandler(int sigNum) {
+    shmctl(remshmId, IPC_RMID, NULL);
+    printf("Terminating the shared memory!\n");
+    semctl(remSemId,0,IPC_RMID);
+    printf("Terminating the semaphore!\n");
+    exit(0);
+}
+
+void preempt() {
+    if(tail) {
+        tail->next = run;
+        run->next = NULL;
+        tail = tail->next;
+    }
+    else {
+        head = run;
+        tail = run;
+        head->next = NULL;
+    }
+}
+
+void loadCache(struct nodePCB* runPCB) {
+    runCache[0] = runPCB->data.realId;
+    runCache[1] = runPCB->data.running;
+    runCache[2] = runPCB->data.remaining;
+    runCache[3] = runPCB->data.waiting;
+    runPCB->data.state = 1;
+    runCache[4] = runPCB->data.state;
+    runCache[5] = runPCB->data.lastRun;
 }
