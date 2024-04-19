@@ -160,6 +160,7 @@ bool RR(int now) {
             printf("Quantum finished for process %d.\n", runCache[0]);             
             savePCB(run->mirror);
             preempt(); // update the list
+            kill(runCache[0], SIGSTOP);
             run = NULL; // no current running
         }
         if(dead) {
@@ -178,6 +179,7 @@ bool RR(int now) {
             
             // load the data into the running cache
             loadCache(runPCB);
+            kill(runCache[0], SIGCONT);
             if(runCache[5] == 0) // just for printing
                 printf("Inserted process %d with remaining %d.\n", run->data.id, runCache[2]);
             else
@@ -239,7 +241,8 @@ int recieveMSG(int ProcessQ, int time)
             else {
                 // insert in Process Table
                 printf("parent\n"); // parent code
-                while(*remAddr != message.data.runtime); // wait till creation
+                down(remSemId); // wait till creation
+                kill(newProcessID, SIGSTOP);
                 struct Node * ptr = insertProcess(&message); // insert in ready queue
                 ptr->mirror = makeProcess(&message, RecievedID, newProcessID); // insert PCB
             }

@@ -21,6 +21,7 @@ int main(int argc, char * argv[])
     remainingtime = atoi(argv[1]); // initialized when initializing process
     (*remAddr) = remainingtime;
     printf("I am here process with remaining time: %d\n", remainingtime);
+    up(semId);
     // current thoughts -> wait for schedular to send a signal and decrease runtime
     while (remainingtime > 0)
     {
