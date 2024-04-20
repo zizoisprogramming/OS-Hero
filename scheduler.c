@@ -73,7 +73,8 @@ double WTA=0;
 int WT=0;
 int Pcount=0;
 int used=0;
-int endTime;
+int totalRun=0;
+int endTime=0;
 struct WTAnode* WTAlist=NULL;
 
 void initializeSem();
@@ -184,7 +185,7 @@ void perfWrite()
     FILE * ptr;
     ptr = fopen("scheduler.perf", "w");
     double avgWTA = WTA/Pcount;
-    fprintf(ptr,"CPU utilization = %.2f%%\n",((double)used/(double)endTime)*100);
+    fprintf(ptr,"CPU utilization = %.2f%%\n",((double)totalRun/(double)endTime)*100);
     fprintf(ptr,"Avg WTA = %.2f \n", avgWTA);
     fprintf(ptr,"Avg Waiting = %.2f \n",(double)WT/Pcount);
     struct WTAnode* temp=WTAlist;
@@ -492,6 +493,7 @@ void childDead(int time) {
     }
     WTA=WTA + (double)(time-run->data.arrival)/(double)run->data.runtime;
     WT=WT + run->mirror->data.waiting;
+    totalRun+=run->data.runtime;
     fprintf(pFile, "At time %d process %d finished arr %d total %d remain 0 wait %d TA %d WTA %.2f \n",time,run->data.id,run->data.arrival,run->data.runtime,run->mirror->data.waiting,time-run->data.arrival,(double)(time-run->data.arrival)/(double)run->data.runtime);
 
     removeBlock();
@@ -645,6 +647,9 @@ bool SRTN(int now)
                 ///old run
                 run->mirror->data.state = 0; // state = 0 aka. skeeping
                 //return run to ready q
+                run->mirror->data.lastRun=now;
+                fprintf(pFile, "At time %d process %d stopped arr %d total %d remain %d wait %d\n",now,run->data.id,run->data.arrival,run->data.runtime,run->mirror->data.remaining,run->mirror->data.waiting);
+
                 if(tail!=NULL)
                 {
                 tail->next=run;
@@ -661,6 +666,17 @@ bool SRTN(int now)
 
                 //load new run
                 run=min_node;
+                if(run->data.runtime==run->mirror->data.remaining)
+            {
+                run->mirror->data.waiting+=(now-run->mirror->data.arrival);
+
+                fprintf(pFile, "At time %d process %d started arr %d total %d remain %d wait %d\n",now,run->data.id,run->data.arrival,run->data.runtime,run->mirror->data.remaining,run->mirror->data.waiting);
+            }
+            else
+            {
+                run->mirror->data.waiting+=(now-run->mirror->data.lastRun);
+                fprintf(pFile, "At time %d process %d resumed arr %d total %d remain %d wait %d\n",now,run->data.id,run->data.arrival,run->data.runtime,run->mirror->data.remaining,run->mirror->data.waiting);
+            }
                 kill(min_node->mirror->data.realId, SIGCONT);
             }
             else
@@ -687,7 +703,18 @@ bool SRTN(int now)
             printf("new run is loaded,no switching");
             //load new run
             run=min_node;
+            if(run->data.runtime==run->mirror->data.remaining)
+            {
+                run->mirror->data.waiting+=(now-run->mirror->data.arrival);
+                fprintf(pFile, "At time %d process %d started arr %d total %d remain %d wait %d\n",now,run->data.id,run->data.arrival,run->data.runtime,run->mirror->data.remaining,run->mirror->data.waiting);
+            }
+            else
+            {
+                run->mirror->data.waiting+=(now-run->mirror->data.lastRun);
+                fprintf(pFile, "At time %d process %d resumed arr %d total %d remain %d wait %d\n",now,run->data.id,run->data.arrival,run->data.runtime,run->mirror->data.remaining,run->mirror->data.waiting);
+            }
             kill(min_node->mirror->data.realId, SIGCONT);
+
         }
 
         //actual run
