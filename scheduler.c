@@ -12,6 +12,11 @@ struct Node
     struct Node *next;
     struct nodePCB * mirror; // points to its mirror in the process table
 };
+struct WTAnode
+{
+    double data;
+    struct WTAnode * next;
+};
 struct PCB
 {
     int id;
@@ -63,6 +68,14 @@ int remshmId;
 int remSemId;
 int * remAddr;
 
+FILE * pFile;
+double WTA=0;
+int WT=0;
+int Pcount=0;
+int used=0;
+int endTime;
+struct WTAnode* WTAlist=NULL;
+
 void initializeSem();
 void initializeMem();
 void detachMem();
@@ -77,6 +90,7 @@ struct nodePCB * makeProcess(struct msgbuff*, int ,int);
 void childDead();
 void intHandler(int sigNum);
 void loadCache(struct nodePCB* );
+void perfWrite();
 
 int main(int argc, char * argv[])
 {
@@ -84,6 +98,8 @@ int main(int argc, char * argv[])
     signal(SIGINT, intHandler);
     initializeMem();
     initializeSem();
+    pFile = fopen("scheduler.log", "w");
+    fprintf(pFile, "#At time x process y state arr w total z remain y wait k\n");
     //TODO implement the scheduler :)
     //upon termination release the clock resources. "ZIZO, DON'T FORGET"
     //print arguments
@@ -114,6 +130,11 @@ int main(int argc, char * argv[])
             RecievedID = recieveMSG(ProcessQ, time); 
             // Start Scheduling for this timestamp   
             callAlgo(time); // specific algo handles from here
+
+            if(run)
+            {
+                used++;
+            }
         }
     }
     printf("at Time %d Recieved LAST %d\n", time, RecievedID);
@@ -125,9 +146,17 @@ int main(int argc, char * argv[])
             // Choose Algo
             time = time2;
             finish = callAlgo(time); // specific algo handles from here
+            if(run)
+            {
+                used++;
+            }
         }
     }
     printf("at Time %d Finished\n", time);
+    endTime=time;
+    perfWrite();
+
+    fclose(pFile);
    
     shmctl(remshmId, IPC_RMID, NULL);
     printf("Terminating the shared memory!\n");
@@ -135,6 +164,40 @@ int main(int argc, char * argv[])
     printf("Terminating the semaphore!\n");
     //destroyClk(true);
 }
+
+double rooting(double num)
+{
+    double x= num;
+    double epsilon=0.000001;
+
+    while((x-num/x)>epsilon)
+    {
+        x=(x+num/x)/2;
+    }
+
+    return x;
+}
+
+void perfWrite()
+{
+    FILE * ptr;
+    ptr = fopen("scheduler.perf", "w");
+    double avgWTA = WTA/Pcount;
+    fprintf(ptr,"CPU utilization = %.2f%%\n",((double)used/(double)endTime)*100);
+    fprintf(ptr,"Avg WTA = %.2f \n", avgWTA);
+    fprintf(ptr,"Avg Waiting = %.2f \n",(double)WT/Pcount);
+    struct WTAnode* temp=WTAlist;
+    double sum=0.0;
+    while(temp!=NULL)
+    {
+        sum+=((temp->data-avgWTA)*(temp->data-avgWTA));
+        temp=temp->next;
+    }
+    double Std=rooting(sum);
+    fprintf(ptr,"Std WTA = %.2f \n",Std);
+    fclose(ptr);
+}
+
 // The RR scheduling function
 bool RR(int now) {
     if(run) { 
@@ -149,7 +212,7 @@ bool RR(int now) {
             if(waitpid(runCache[0],&status,0) == -1) // wait for the exit code
                 printf("Error in wait.\n"); 
             else 
-                childDead(); // execute the dying algo
+                childDead(now); // execute the dying algo
         } 
         runningQuantum--;    // a quantum is finished    
         if(runningQuantum == 0 && !dead) {
@@ -160,6 +223,7 @@ bool RR(int now) {
             printf("Quantum finished for process %d.\n", runCache[0]);             
             savePCB(run->mirror);
             preempt(); // update the list
+            fprintf(pFile, "At time %d process %d stopped arr %d total %d remain %d wait %d\n",now,run->data.id,run->data.arrival,run->data.runtime,run->mirror->data.remaining,run->mirror->data.waiting);
             kill(runCache[0], SIGSTOP);
             run = NULL; // no current running
         }
@@ -176,14 +240,21 @@ bool RR(int now) {
             if(head == NULL)
                 tail = NULL;
             struct nodePCB * runPCB = run->mirror; // get the PCB
+            //run->mirror->data.waiting=now-run->data.arrival;
             
             // load the data into the running cache
             loadCache(runPCB);
             kill(runCache[0], SIGCONT);
             if(runCache[5] == 0) // just for printing
-                printf("Inserted process %d with remaining %d.\n", run->data.id, runCache[2]);
+                {
+                    printf("Inserted process %d with remaining %d.\n", run->data.id, runCache[2]);
+                    fprintf(pFile, "At time %d process %d started arr %d total %d remain %d wait %d\n",now,run->data.id,run->data.arrival,run->data.runtime,run->mirror->data.remaining,run->mirror->data.waiting);
+                }
             else
-                printf("Rescheduling process %d with remaining %d.\n", run->data.id, runCache[2]);
+                {
+                    printf("Rescheduling process %d with remaining %d.\n", run->data.id, runCache[2]);
+                    fprintf(pFile, "At time %d process %d resumed arr %d total %d remain %d wait %d\n",now,run->data.id,run->data.arrival,run->data.runtime,run->mirror->data.remaining,run->mirror->data.waiting);
+                }
         }
    
     }
@@ -207,6 +278,80 @@ struct Node * insertProcess(struct msgbuff* message) {
         tail = newNode;
     }
     return newNode;
+}
+
+void extractHPF()
+{
+    struct Node* temp=head;
+    struct Node* HP=head;
+    struct Node* prev=NULL;
+    while(temp->next!=NULL)
+    {
+        if(temp->next->data.priority < HP->data.priority)
+        {
+            HP=temp->next;
+            prev=temp;
+        }
+        temp=temp->next;
+    }
+    run=HP;
+    if(HP==head)
+    {
+        head=head->next;
+        if(head==NULL)
+            tail=NULL;
+        return;
+    }
+    if(HP==tail)
+    {
+        tail=prev;
+        tail->next=NULL;
+        return;
+    }
+    prev->next=HP->next;
+}
+
+bool HPF(int time)
+{
+    if(run) { 
+        // if something is running
+        kill(runCache[0],SIGUSR1); // real ID 
+        down(remSemId); // wait till the process decrements
+
+        runCache[1]++; // running time
+        runCache[2] = *remAddr; // remaining time
+        if(runCache[2] == 0) {
+            int status;
+            if(waitpid(runCache[0],&status,0) == -1) // wait for the exit code
+                printf("Error in wait.\n"); 
+            else 
+                childDead(time); // execute the dying algo
+        } 
+        if(dead) {
+            printf("Process %d terminating.\n", runCache[0]);
+            dead = false;
+        }
+    }
+    if(!run) {
+        if(head) 
+        {
+            extractHPF();
+            run->mirror->data.waiting=time-run->data.arrival;
+            fprintf(pFile, "At time %d process %d started arr %d total %d remain %d wait %d\n",time,run->data.id,run->data.arrival,run->data.runtime,run->mirror->data.remaining,run->mirror->data.waiting);
+
+            struct nodePCB * runPCB = run->mirror; // get the PCB
+            // load the data into the running cache
+            loadCache(runPCB);
+            kill(runCache[0], SIGCONT);
+            if(runCache[5] == 0) // just for printing
+                printf("Inserted process %d with remaining %d.\n", run->data.id, runCache[2]);
+            else
+                printf("el mfrod mfesh print ops");
+        }
+    }
+    if(!head && !run) // if the list is empty
+        return true; // finish
+    return false;
 }
 
 int recieveMSG(int ProcessQ, int time)
@@ -247,17 +392,18 @@ int recieveMSG(int ProcessQ, int time)
                 ptr->mirror = makeProcess(&message, RecievedID, newProcessID); // insert PCB
             }
         }
-    
+        Pcount++;
     } 
     return RecievedID;
 }
 
 bool callAlgo(int time){
     if(algo == 1) {
-        // call SPF
+        // call HPF
+        HPF(time);
     }
     else if(algo == 2) {
-        // call HPF
+        // call SPF
     }
     else {
         // call RR
@@ -323,7 +469,26 @@ void removeBlock() {
     }
 }
 
-void childDead() {
+void childDead(int time) {
+    struct WTAnode* temp=(struct WTAnode*)malloc(sizeof(struct WTAnode));
+    if(temp!=NULL)
+    {
+        temp->data=(double)(time-run->data.arrival)/(double)run->data.runtime;
+        temp->next=NULL;
+    }
+    if(WTAlist==NULL)
+    {
+        WTAlist=temp;
+    }
+    else
+    {
+        temp->next=WTAlist;
+        WTAlist=temp;
+    }
+    WTA=WTA + (double)(time-run->data.arrival)/(double)run->data.runtime;
+    WT=WT + run->mirror->data.waiting;
+    fprintf(pFile, "At time %d process %d finished arr %d total %d remain 0 wait %d TA %d WTA %.2f \n",time,run->data.id,run->data.arrival,run->data.runtime,run->mirror->data.waiting,time-run->data.arrival,(double)(time-run->data.arrival)/(double)run->data.runtime);
+
     removeBlock();
     free(run->mirror);
     dead = true;
