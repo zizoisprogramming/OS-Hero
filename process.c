@@ -6,6 +6,7 @@ int remainingtime;
 int semId; // semaphore id
 int memId; // memory id
 int * remAddr;
+bool started;
 
 void handler(int signum);
 void getSem();
@@ -21,9 +22,10 @@ int main(int argc, char * argv[])
     remainingtime = atoi(argv[1]); // initialized when initializing process
     (*remAddr) = remainingtime;
     printf("I am here process with remaining time: %d\n", remainingtime);
+    started = false;
     up(semId);
     // current thoughts -> wait for schedular to send a signal and decrease runtime
-    while (remainingtime > 0)
+    while (remainingtime > 0 || !started)
     {
         // just waits for signals to update the remaining time
     }
@@ -35,7 +37,7 @@ int main(int argc, char * argv[])
     return 0;
 }
 void handler(int signum) {
-
+    started = true;
     remainingtime--;
     (*remAddr) = remainingtime;
     printf("Remaining time decremented %d\n", *remAddr);
