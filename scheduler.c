@@ -235,7 +235,8 @@ bool RR(int now) {
         }
     }
     if(!run) {
-        if(head) {
+        runCache[2] = 0;
+        while (head && !runCache[2]) {
             runningQuantum = quantum; // reset the quantum
             run = head; // a new head
             head = head->next; // update
@@ -246,19 +247,34 @@ bool RR(int now) {
             // load the data into the running cache
             loadCache(runPCB);
             kill(runCache[0], SIGCONT);
-            if(runCache[5] == 0) // just for printing
-                {
-                    run->mirror->data.waiting+=now-run->data.arrival;
-                    printf("Inserted process %d with remaining %d.\n", run->data.id, runCache[2]);
-                    fprintf(pFile, "At time %d process %d started arr %d total %d remain %d wait %d\n",now,run->data.id,run->data.arrival,run->data.runtime,run->mirror->data.remaining,run->mirror->data.waiting);
+            if(runCache[2] == 0) {
+                kill(runCache[0], SIGUSR1);
+                down(remSemId); // wait till the process decrements
+                int status;
+                if(waitpid(runCache[0],&status,0) == -1) // wait for the exit code
+                    printf("Error in wait.\n"); 
+                else {
+                    savePCB(run->mirror);
+                    run->mirror->data.waiting += now-run->data.arrival; // waiting time
+                    fprintf(pFile, "At time %d process %d stopped arr %d total %d remain %d wait %d\n",now,run->data.id,run->data.arrival,run->data.runtime,run->mirror->data.remaining,run->mirror->data.waiting);
+                    childDead(now); // execute the dying algo
                 }
-            else
-                {
-                    run->mirror->data.waiting+=(now-run->mirror->data.lastRun);
-                    printf("Rescheduling process %d with remaining %d.\n", run->data.id, runCache[2]);
-                    fprintf(pFile, "At time %d process %d resumed arr %d total %d remain %d wait %d\n",now,run->data.id,run->data.arrival,run->data.runtime,run->mirror->data.remaining,run->mirror->data.waiting);
-                }
-            runCache[3]=run->mirror->data.waiting;
+            }
+            
+            if(runCache[5] == 0 && run) // just for printing
+            {
+                run->mirror->data.waiting+=now-run->data.arrival;
+                printf("Inserted process %d with remaining %d.\n", run->data.id, runCache[2]);
+                fprintf(pFile, "At time %d process %d started arr %d total %d remain %d wait %d\n",now,run->data.id,run->data.arrival,run->data.runtime,run->mirror->data.remaining,run->mirror->data.waiting);
+            }
+            else if(run)
+            {
+                run->mirror->data.waiting+=(now-run->mirror->data.lastRun);
+                printf("Rescheduling process %d with remaining %d.\n", run->data.id, runCache[2]);
+                fprintf(pFile, "At time %d process %d resumed arr %d total %d remain %d wait %d\n",now,run->data.id,run->data.arrival,run->data.runtime,run->mirror->data.remaining,run->mirror->data.waiting);
+            }
+            if(run)
+                runCache[3] = run->mirror->data.waiting;
         }
    
     }
@@ -268,7 +284,9 @@ bool RR(int now) {
 }
 
 struct Node * insertProcess(struct msgbuff* message) {
+    // allocate a new node
     struct Node* newNode = (struct Node*)malloc(sizeof(struct Node));
+    // set the data
     newNode->data = message->data;
     newNode->next = NULL;
     if (head == NULL)
@@ -346,7 +364,7 @@ bool HPF(int time)
             struct nodePCB * runPCB = run->mirror; // get the PCB
             // load the data into the running cache
             loadCache(runPCB);
-            kill(runCache[0], SIGCONT);
+            kill(runCache[0], SIGCONT); // resume
             if(runCache[5] == 0) // just for printing
                 printf("Inserted process %d with remaining %d.\n", run->data.id, runCache[2]);
             else
@@ -632,46 +650,74 @@ struct Node* extractMin() {
 bool SRTN(int now)
 {
     printf("SRTN called \n");
-     struct Node* min_node = NULL;
-     min_node=extractMin(); //extract node with minimum remaining time
+    struct Node* min_node = NULL;
+    min_node = extractMin(); //extract node with minimum remaining time
+        // actual run
+        if(run)
+        {
+            if(run->mirror->data.remaining > 0)
+            {
+                kill(run->mirror->data.realId,SIGUSR1); // sig usr1 decrements remaining time of process
+                down(remSemId); // wait till the process decrements
+                run->mirror->data.running++; // running time
+                run->mirror->data.remaining = *remAddr; //read remaining time from shared memory
+                run->mirror->data.lastRun = now;
+                /////for debugging
+                printf("at time %d process %d with rem time %d has run \n",
+                now,run->data.id,run->mirror->data.remaining);
+            }
+            int debug_id = run->mirror->data.realId;
+            if(run->mirror->data.remaining == 0) { //process finished
+                int status;
+                if(waitpid(run->mirror->data.realId,&status,0) == -1) // wait for the exit code
+                    printf("Error in wait.\n"); 
+                else 
+                    //this sets run to null
+                    childDead(now); // execute the dying algo
+            }
+            
+            
+            if(dead) {
+                printf("Process %d terminating.\n", debug_id);
+                dead = false;
+            }
+        }
 
         if(run)
         {
             printf("there is a running process\n");
             //if min node is better than already running process, switch
             if(min_node!=NULL && min_node->mirror->data.remaining < run->mirror->data.remaining && min_node!=run)
-            { //preempt
-
+            { 
+                // preempt
                 printf("new run is loaded,switching \n");
                 
-                ///old run
+                // old run
                 run->mirror->data.state = 0; // state = 0 aka. skeeping
-                //return run to ready q
+                // return run to ready q
                 run->mirror->data.lastRun=now;
                 fprintf(pFile, "At time %d process %d stopped arr %d total %d remain %d wait %d\n",now,run->data.id,run->data.arrival,run->data.runtime,run->mirror->data.remaining,run->mirror->data.waiting);
 
                 if(tail!=NULL)
                 {
-                tail->next=run;
-                tail=run;
-                tail->next=NULL;
+                    tail->next = run;
+                    tail = run;
+                    tail->next = NULL;
                 }
                 else
                 {
-                    head= run;
-                    tail=run;
+                    head = run;
+                    tail = run;
                 }
-                 kill(run->mirror->data.realId, SIGSTOP);
-                /////
+                kill(run->mirror->data.realId, SIGSTOP);
 
                 //load new run
-                run=min_node;
+                run = min_node;
                 if(run->data.runtime==run->mirror->data.remaining)
-            {
-                run->mirror->data.waiting+=(now-run->mirror->data.arrival);
-
-                fprintf(pFile, "At time %d process %d started arr %d total %d remain %d wait %d\n",now,run->data.id,run->data.arrival,run->data.runtime,run->mirror->data.remaining,run->mirror->data.waiting);
-            }
+                {
+                    run->mirror->data.waiting+=(now-run->mirror->data.arrival);
+                    fprintf(pFile, "At time %d process %d started arr %d total %d remain %d wait %d\n",now,run->data.id,run->data.arrival,run->data.runtime,run->mirror->data.remaining,run->mirror->data.waiting);
+                }
             else
             {
                 run->mirror->data.waiting+=(now-run->mirror->data.lastRun);
@@ -684,17 +730,17 @@ bool SRTN(int now)
                 printf("old run will not be replaced\n");
                 if(min_node!=NULL) //return min_node to ready q
                 {
-                if(tail!=NULL)
-                {
-                tail->next=min_node;
-                tail=min_node;
-                tail->next=NULL;
-                }
-                else
-                {
-                    head= min_node;
-                    tail=min_node;
-                }
+                    if(tail!=NULL)
+                    {
+                        tail->next=min_node;
+                        tail=min_node;
+                        tail->next=NULL;
+                    }
+                    else
+                    {
+                        head= min_node;
+                        tail=min_node;
+                    }
                 }
             }
         }
@@ -710,43 +756,10 @@ bool SRTN(int now)
             }
             else
             {
-                run->mirror->data.waiting+=(now-run->mirror->data.lastRun);
+                run->mirror->data.waiting += (now-run->mirror->data.lastRun);
                 fprintf(pFile, "At time %d process %d resumed arr %d total %d remain %d wait %d\n",now,run->data.id,run->data.arrival,run->data.runtime,run->mirror->data.remaining,run->mirror->data.waiting);
             }
             kill(min_node->mirror->data.realId, SIGCONT);
-
-        }
-
-        //actual run
-        if(run)
-        {
-            if(run->mirror->data.remaining>0)
-            {
-            kill(run->mirror->data.realId,SIGUSR1); // sig usr1 decrements remaining time of process
-            down(remSemId); // wait till the process decrements
-            run->mirror->data.running++; // running time
-            run->mirror->data.remaining = *remAddr; //read remaining time from shared memory
-            run->mirror->data.lastRun=now;
-            /////for debugging
-            printf("at time %d process %d with rem time %d has run \n",
-            now,run->data.id,run->mirror->data.remaining);
-            }
-         /////////
-            int debug_id=run->mirror->data.realId;
-            if(run->mirror->data.remaining == 0) { //process finished
-                int status;
-                if(waitpid(run->mirror->data.realId,&status,0) == -1) // wait for the exit code
-                    printf("Error in wait.\n"); 
-                else 
-                    //this sets run to null
-                    childDead(now); // execute the dying algo
-            }
-            
-            
-            if(dead) {
-                printf("Process %d terminating.\n", debug_id);
-                dead = false;
-            }
         }
         if(!head&&!run)
         return true;
