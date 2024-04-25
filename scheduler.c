@@ -358,6 +358,31 @@ bool HPF(int time)
         if(head) 
         {
             extractHPF();
+            while(run->mirror->data.remaining==0)
+            {
+                
+
+                kill(run->mirror->data.realId, SIGCONT);
+            
+                kill(run->mirror->data.realId, SIGUSR1);
+                down(remSemId); // wait till the process decrements
+                int status;
+                if(waitpid(run->mirror->data.realId,&status,0) == -1) // wait for the exit code
+                    printf("Error in wait.\n"); 
+                else {
+                    savePCB(run->mirror);
+                    run->mirror->data.waiting += time-run->data.arrival; // waiting time
+                    fprintf(pFile, "At time %d process %d started arr %d total %d remain %d wait %d\n",time,run->data.id,run->data.arrival,run->data.runtime,run->mirror->data.remaining,run->mirror->data.waiting);
+                    childDead(time); // execute the dying algo
+                }
+
+                run=NULL;
+                if(head)
+                    extractHPF();
+
+            }
+            if(!run)
+                return true;
             run->mirror->data.waiting=time-run->data.arrival;
             fprintf(pFile, "At time %d process %d started arr %d total %d remain %d wait %d\n",time,run->data.id,run->data.arrival,run->data.runtime,run->mirror->data.remaining,run->mirror->data.waiting);
 
@@ -685,7 +710,7 @@ bool SRTN(int now)
         }
         struct Node* old_run=run;
         min_node = extractMin(); //extract node with minimum remaining time
-        while(min_node&&min_node->mirror->data.remaining==0) //handling case of process with runtime=0
+        while(min_node&&min_node->mirror->data.remaining==0)
         {
             run=min_node;
 
