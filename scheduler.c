@@ -401,7 +401,8 @@ int recieveMSG(int ProcessQ, int time)
                 printf("child\n"); // child code
                 char runtimechar[10];
                 sprintf(runtimechar,"%d",message.data.runtime); // just a function that converts int to char
-                char * args[] = {"./process", runtimechar,NULL}; // prepare the arguments
+                printf("%s", runtimechar);
+                char * args[] = {"/home/ziad/Project/Ours/OS-Hero/process", runtimechar,NULL}; // prepare the arguments
                 execvp(args[0], args); // run 
                 printf("Execute error.\n"); // if reached here then error
             }
