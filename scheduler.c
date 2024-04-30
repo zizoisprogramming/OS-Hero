@@ -749,12 +749,11 @@ struct Node* extractMin() {
 
     return MinNode;
 }
-
 bool SRTN(int now)
 {
     printf("SRTN called \n");
     struct Node* min_node = NULL;
-    min_node = extractMin(); //extract node with minimum remaining time
+
         // actual run
         if(run)
         {
@@ -785,6 +784,7 @@ bool SRTN(int now)
                 dead = false;
             }
         }
+        min_node = extractMin(); //extract node with minimum remaining time
         if(run)
         {
             printf("there is a running process\n");
