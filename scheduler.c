@@ -470,7 +470,7 @@ void InsertWaitList(struct Node* ptr)
     ptr->next=NULL;
     return;
 }
-void checkWait()
+void checkWait(int time)
 {
     if(headWaitList==NULL)
     {
@@ -497,6 +497,7 @@ void checkWait()
         int RecievedID = message.data.id;
         int IndexStart = mem->start_index;
         int IndexEnd = IndexStart + mem->block_size - 1;
+        
         int newProcessID = fork();
         
         if(newProcessID == -1) {
@@ -515,11 +516,12 @@ void checkWait()
             printf("parent\n"); // parent code
             down(remSemId); // wait till creation
             kill(newProcessID, SIGSTOP);
+             fprintf(memoryFile,"At time %d allocated %d bytes for process %d from %d to %d\n",time,mem->block_size,RecievedID,IndexStart,IndexEnd);
             struct Node * ptr = insertProcess(&message); // insert in ready queue
             ptr->mirror = makeProcess(&message, RecievedID, newProcessID, IndexStart, IndexEnd); // insert PCB
         }
     }
-    checkWait();
+    checkWait(time);
 }
 
 
@@ -621,7 +623,7 @@ void childDead(int time) {
     endTime=time;
     fprintf(memoryFile,"At time %d freed %d bytes for process %d from %d to %d\n",time,run->data.memsize,run->data.id,run->mirror->data.startingIndex,run->mirror->data.EndingIndex);
     deallocate_process(headMem,run->mirror->data.startingIndex);
-    checkWait();
+    checkWait(time);
     removeBlock();
     free(run->mirror);
     dead = true;
