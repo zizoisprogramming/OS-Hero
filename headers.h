@@ -2,11 +2,10 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/file.h>
-#include <sys/ipc.h>
 #include <sys/shm.h>
-#include <sys/sem.h>
-#include <sys/msg.h>
-#include <sys/wait.h>
+#include<sys/sem.h> // new 
+#include <sys/wait.h> // new 
+
 #include <stdlib.h>
 #include <unistd.h>
 #include <signal.h>
@@ -17,13 +16,52 @@ typedef short bool;
 
 #define SHKEY 300
 
+#define MEM_KEY 12 // the remaining time key
+#define SEMKEY 23 
+
 
 ///==============================
 //don't mess with this variable//
 int * shmaddr;                 //
 //===============================
 
+/*
+    #include <sys>
+    #include <sys/shm.h>
+    #include <sys/sem.h>
+    #include <sys/msg.h>
+    #include <sys/wait.h>
+*/
 
+void down(int sem)
+{
+    struct sembuf op;
+
+    op.sem_num = 0;
+    op.sem_op = -1;
+    op.sem_flg = !IPC_NOWAIT;
+
+    if (semop(sem, &op, 1) == -1)
+    {
+        perror("Error in down()");
+        exit(-1);
+    }
+}
+
+void up(int sem)
+{
+    struct sembuf op;
+
+    op.sem_num = 0;
+    op.sem_op = 1;
+    op.sem_flg = !IPC_NOWAIT;
+
+    if (semop(sem, &op, 1) == -1)
+    {
+        perror("Error in up()");
+        exit(-1);
+    }
+}
 
 int getClk()
 {
