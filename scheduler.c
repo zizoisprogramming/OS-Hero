@@ -75,6 +75,7 @@ int remSemId;
 int * remAddr;
 
 FILE * pFile;
+FILE * memoryFile;
 double WTA=0;
 int WT=0;
 int Pcount=0;
@@ -109,7 +110,9 @@ int main(int argc, char * argv[])
     initializeMem();
     initializeSem();
     pFile = fopen("scheduler.log", "w");
+    memoryFile=fopen("memory.log","w");
     fprintf(pFile, "#At time x process y state arr w total z remain y wait k\n");
+    fprintf(memoryFile,"#At time x allocated y bytes for process z from i to j\n");
     //TODO implement the scheduler :)
     //upon termination release the clock resources. "ZIZO, DON'T FORGET"
     //print arguments
@@ -168,6 +171,7 @@ int main(int argc, char * argv[])
     perfWrite();
 
     fclose(pFile);
+    fclose(memoryFile);
    
     shmctl(remshmId, IPC_RMID, NULL);
     printf("Terminating the shared memory!\n");
@@ -204,7 +208,7 @@ void perfWrite()
         sum+=((temp->data-avgWTA)*(temp->data-avgWTA));
         temp=temp->next;
     }
-    double Std=rooting(sum);
+    double Std=sqrt(sum);
     fprintf(ptr,"Std WTA = %.2f \n",Std);
     fclose(ptr);
 }
@@ -399,7 +403,6 @@ int recieveMSG(int ProcessQ, int time)
         RecievedID = message.data.id;
         printf("at Time %d Recieved ID: %d mem: %d\n", time, RecievedID, message.data.memsize);
 
-
         if (RecievedID != -1 && RecievedID != -2)
         {
             //////////////Check if Possible////////////
@@ -440,6 +443,7 @@ int recieveMSG(int ProcessQ, int time)
                     down(remSemId); // wait till creation
                     kill(newProcessID, SIGSTOP);
                     struct Node * ptr = insertProcess(&message); // insert in ready queue
+                    fprintf(memoryFile,"At time %d allocated %d bytes for process %d from %d to %d\n",time,mem->block_size,RecievedID,IndexStart,IndexEnd);
                     ptr->mirror = makeProcess(&message, RecievedID, newProcessID, IndexStart, IndexEnd); // insert PCB
                 }
             }
@@ -615,6 +619,7 @@ void childDead(int time) {
     totalRun+=run->data.runtime;
     fprintf(pFile, "At time %d process %d finished arr %d total %d remain 0 wait %d TA %d WTA %.2f \n",time,run->data.id,run->data.arrival,run->data.runtime,run->mirror->data.waiting,time-run->data.arrival,(double)(time-run->data.arrival)/(double)run->data.runtime);
     endTime=time;
+    fprintf(memoryFile,"At time %d freed %d bytes for process %d from %d to %d\n",time,run->data.memsize,run->data.id,run->mirror->data.startingIndex,run->mirror->data.EndingIndex);
     deallocate_process(headMem,run->mirror->data.startingIndex);
     checkWait();
     removeBlock();
