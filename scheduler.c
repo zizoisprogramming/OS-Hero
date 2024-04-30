@@ -100,7 +100,7 @@ int main(int argc, char * argv[])
     signal(SIGINT, intHandler);
     initializeMem();
     initializeSem();
-    pFile = fopen("scheduler.log", "w");
+    pFile = fopen("/home/ziad/Project/Ours/OS-Hero/scheduler.log", "w");
     fprintf(pFile, "#At time x process y state arr w total z remain y wait k\n");
     //TODO implement the scheduler :)
     //upon termination release the clock resources. "ZIZO, DON'T FORGET"
@@ -183,7 +183,7 @@ double rooting(double num)
 void perfWrite()
 {
     FILE * ptr;
-    ptr = fopen("scheduler.perf", "w");
+    ptr = fopen("/home/ziad/Project/Ours/OS-Hero/scheduler.perf", "w");
     double avgWTA = WTA/Pcount;
     fprintf(ptr,"CPU utilization = %.2f%%\n",((double)totalRun/(double)endTime)*100);
     fprintf(ptr,"Avg WTA = %.2f \n", avgWTA);
