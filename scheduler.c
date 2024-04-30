@@ -420,6 +420,7 @@ int recieveMSG(int ProcessQ, int time)
             {
                 int IndexStart = mem->start_index;
                 int IndexEnd = IndexStart + mem->block_size - 1;
+                Pcount++;
                 int newProcessID = fork();
                 
                 if(newProcessID == -1) {
@@ -448,7 +449,6 @@ int recieveMSG(int ProcessQ, int time)
             ////////////////////////////////////////////////////////////////
             
         }
-        Pcount++;
     } 
     printf("returning \n");
     return RecievedID;
