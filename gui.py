@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk, font
 import subprocess
 import io
+import os
 from PIL import Image, ImageDraw, ImageFont
 
 class OsSchedulerApp:
@@ -28,6 +29,14 @@ class OsSchedulerApp:
         self.algo_selection = ttk.Combobox(master, values=["RR (round robin)", "SRTN (shortest remaining time next)", "HPF (Highest priority first)"], font=label_font)
         self.algo_selection.pack(pady=(10, 10))  # Space after combobox
         self.algo_selection.bind("<<ComboboxSelected>>", self.on_algo_selected)
+
+        # Label for the path entry
+        self.label_path = tk.Label(master, text="Give the path", fg=text_color, bg='black', font=label_font)
+        self.label_path.pack(pady=(10, 5))  # Space below combobox
+
+        # Entry for specifying the path
+        self.path_entry = tk.Entry(master, font=label_font)
+        self.path_entry.pack(pady=(5, 10))  # Space below label
 
         # Frame to contain dynamically created widgets
         self.dynamic_frame = tk.Frame(master, bg='black')
@@ -71,6 +80,16 @@ class OsSchedulerApp:
             return False
         return True
 
+    def validate_path(self):
+        if not self.path_entry.get():
+            self.error_label.config(text="Please enter the path.")
+            return False
+        path = self.path_entry.get()
+        if not os.path.exists(path):
+            self.error_label.config(text="The path doesn't exists.")
+            return False
+        return True
+    
     def execute_c_file(self):
         self.error_label.config(text="")
         mapped = {  
@@ -83,11 +102,11 @@ class OsSchedulerApp:
             if not self.validate_quantum():
                 return
             quantum = self.quantum_entry.get()
-            args = [mapped["RR"], quantum]  # Arguments for RR
+            args = [mapped["RR"], quantum, self.path_entry.get()]  # Arguments for RR
         else:
-            if not self.validate_selection():
+            if not self.validate_selection() or not self.validate_path():
                 return
-            args = [mapped[self.algo_selection.get().split()[0]], '2']  # First word, e.g., "SRTN" or "HPF"
+            args = [mapped[self.algo_selection.get().split()[0]], '2',self.path_entry.get()]  # First word, e.g., "SRTN" or "HPF"
 
         # Update status message in the main window
         self.error_label.config(text="Your algorithm is running...", fg="#296a6a")
@@ -103,14 +122,14 @@ class OsSchedulerApp:
         except KeyboardInterrupt:
             self.error_label.config(text="Finished Execution. Generating the output file.")
             self.master.after(2000, lambda: self.error_label.config(text=""))
-            self.display_log_file("Log file.", "/home/ziad/Project/Ours/OS-Hero/scheduler.log")
-            self.display_log_file("perf file.", "/home/ziad/Project/Ours/OS-Hero/scheduler.perf")
+            self.display_file("Log file.", "/home/ziad/Project/Ours/OS-Hero/scheduler.log", "/home/ziad/Project/Ours/OS-Hero/log.png")
+            self.display_file("perf file.", "/home/ziad/Project/Ours/OS-Hero/scheduler.perf","/home/ziad/Project/Ours/OS-Hero/perf.png")
         except Exception as e:
             self.error_label.config(text=f"Failed to execute C file: {e}")
 
 
         
-    def display_log_file(self, title, path):
+    def display_file(self, title, path, pathimg):
         try:
             # Open and read the log file
             with open(path, "r") as file:
@@ -118,6 +137,7 @@ class OsSchedulerApp:
 
             # Create an image from the log content
             image = self.text_to_image(log_content)
+            image.save(pathimg)
             self.show_image_in_tkinter(image, title=title)
         except Exception as e:
             self.error_label.config(text=f"Error displaying log file: {e}")

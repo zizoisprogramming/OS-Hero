@@ -19,10 +19,10 @@ struct msgbuff
     struct processData data;
 };
 int ProcessQ;
-void readFile(struct Node** head, struct Node** tail) {
+void readFile(struct Node** head, struct Node** tail, char * path) {
     FILE *fptr;
     
-    fptr = fopen("/home/ziad/Project/Ours/OS-Hero/processes.txt", "r");
+    fptr = fopen(path, "r");
     if (fptr == NULL) {
         perror("Error in opening file");
         exit(1);
@@ -75,7 +75,7 @@ int main(int argc, char * argv[])
     struct Node* head = NULL;
     struct Node* tail = NULL;
     
-    readFile(&head, &tail);
+    readFile(&head, &tail, argv[3]);
     
     key_t key_id;
 

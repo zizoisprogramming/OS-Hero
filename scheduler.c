@@ -155,7 +155,7 @@ int main(int argc, char * argv[])
         }
     }
     printf("at Time %d Finished\n", time);
-    endTime=time;
+    //endTime=time;
     perfWrite();
 
     fclose(pFile);
@@ -185,7 +185,7 @@ void perfWrite()
     FILE * ptr;
     ptr = fopen("/home/ziad/Project/Ours/OS-Hero/scheduler.perf", "w");
     double avgWTA = WTA/Pcount;
-    fprintf(ptr,"CPU utilization = %.2f%%\n",((double)totalRun/(double)endTime)*100);
+    fprintf(ptr,"CPU utilization = %.2f%%\n",((double)totalRun/(double)(endTime - 1))*100);
     fprintf(ptr,"Avg WTA = %.2f \n", avgWTA);
     fprintf(ptr,"Avg Waiting = %.2f \n",(double)WT/Pcount);
     struct WTAnode* temp=WTAlist;
@@ -414,8 +414,9 @@ int recieveMSG(int ProcessQ, int time)
                 struct Node * ptr = insertProcess(&message); // insert in ready queue
                 ptr->mirror = makeProcess(&message, RecievedID, newProcessID); // insert PCB
             }
+            Pcount++;
         }
-        Pcount++;
+        
     } 
     printf("returning \n");
     return RecievedID;
@@ -514,7 +515,7 @@ void childDead(int time) {
     WT=WT + run->mirror->data.waiting;
     totalRun+=run->data.runtime;
     fprintf(pFile, "At time %d process %d finished arr %d total %d remain 0 wait %d TA %d WTA %.2f \n",time,run->data.id,run->data.arrival,run->data.runtime,run->mirror->data.waiting,time-run->data.arrival,(double)(time-run->data.arrival)/(double)run->data.runtime);
-
+    endTime = time;
     removeBlock();
     free(run->mirror);
     dead = true;
