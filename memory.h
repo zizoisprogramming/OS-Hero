@@ -11,7 +11,7 @@ struct block
     struct block* next;
 };
 
-struct block* initialize(int initial_size)
+struct block* initializeBlocks(int initial_size)
 {
   struct block* head=(struct block*)malloc(sizeof(struct block));
   head->block_size=initial_size;
@@ -31,7 +31,7 @@ struct block* allocate_process(struct block* head,int mem_size)
         if(!iter->used)
         {
         if((iter->block_size>mem_size&&iter->block_size<min_block->block_size )|| min_block->used || min_block->block_size<mem_size)
-        min_block=iter;
+            min_block=iter;
         if(iter->block_size==mem_size && !iter->used)
         {
         min_block=iter;
@@ -44,6 +44,8 @@ struct block* allocate_process(struct block* head,int mem_size)
      if(min_block->block_size==mem_size) //if no splitting required
      {
         min_block->used=true;
+        printf("Allocated block at index %d, size %d\n", min_block->start_index, min_block->block_size);
+
         return min_block;
      }
      while(min_block->block_size>mem_size) //split till block size=rounded up mem size
@@ -60,6 +62,7 @@ struct block* allocate_process(struct block* head,int mem_size)
 
      }
      min_block->used=true;
+     printf("Allocated block at index %d, size %d\n", min_block->start_index, min_block->block_size);
      return min_block;
 
 
@@ -72,7 +75,6 @@ int find_buddy(int addr,int size)
 bool deallocate_process(struct block* head,int index)
 {
     struct block* iter=head;
-    
     while(iter) //search for memory //can be removed if block* is passed to function
     {
         if(iter->start_index==index) 
@@ -122,32 +124,4 @@ void display_free_list(struct block* head) {
         }
         iter = iter->next;
     }
-}
-int main() //only for testing
-{
-    // Initialize the memory with an initial size of 64
-    struct block* head = initialize(1024);
-
-    // Allocate memory for processes
-    struct block* process1 = allocate_process(head, 8);
-    struct block* process2 = allocate_process(head, 8);
-    struct block* process3 = allocate_process(head, 8);
-    struct block* process7 = allocate_process(head, 8);
-    struct block* process4 = allocate_process(head, 1024);
-        display_free_list(head);
-    deallocate_process(head, 8);
-    deallocate_process(head, 16);
-                    display_free_list(head);
-
-
-    struct block* process5 = allocate_process(head, 1024);
-                display_free_list(head);
-
-    // Display the status of the free list after allocation
-    //display_free_list(head);
-
-    
-
-    // Display the status of the free list after deallocation
-    //display_free_list(head);
 }

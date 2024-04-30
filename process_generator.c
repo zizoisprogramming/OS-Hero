@@ -7,6 +7,7 @@ struct processData
     int arrival;
     int runtime;
     int priority;
+    int memsize;
 };
 struct Node
 {
@@ -36,7 +37,7 @@ void readFile(struct Node** head, struct Node** tail) {
         }
         
         struct processData process;
-        if (sscanf(line, "%d %d %d %d", &process.id, &process.arrival, &process.runtime, &process.priority) != 4) {
+        if (sscanf(line, "%d %d %d %d %d", &process.id, &process.arrival, &process.runtime, &process.priority, &process.memsize) != 5) {
             fprintf(stderr, "Error parsing line: %s\n", line);
             continue;
         }
@@ -62,7 +63,7 @@ void printProcesses(struct Node* head)
     struct Node* current = head;
     while (current != NULL)
     {
-        printf("id: %d, arrival: %d, runtime: %d, priority: %d\n", current->data.id, current->data.arrival, current->data.runtime, current->data.priority);
+        printf("id: %d, arrival: %d, runtime: %d, priority: %d, memsize: %d\n", current->data.id, current->data.arrival, current->data.runtime, current->data.priority, current->data.memsize);
         current = current->next;
     }
 }
@@ -174,13 +175,13 @@ int main(int argc, char * argv[])
                 send_val = msgsnd(ProcessQ, &message, sizeof(message.data), !IPC_NOWAIT);
                 if(send_val != -1)
                 {
-                    printf("at Time %d Sent ID: %d\n", x, message.data.id);
+                    printf("at Time %d Sent ID: %d mem: %d\n", x, message.data.id, message.data.memsize);
                 }
             }
         }
         
     }
-    struct msgbuff message = {1, {-2, -1, -1, -1}};
+    struct msgbuff message = {1, {-2, -1, -1, -1, -1}};
     int send_val = -1;
     printf("Sent Last %d\n", getClk());      
     while (send_val == -1)

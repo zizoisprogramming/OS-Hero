@@ -1,10 +1,12 @@
 #include "headers.h"
+#include "memory.h"
 struct processData
 {
     int id;
     int arrival;
     int runtime;
     int priority;
+    int memsize;
 };
 struct Node
 {
@@ -29,6 +31,8 @@ struct PCB
     int priority;
     int state; // 0 -> sleep 1 -> running
     int lastRun;
+    int startingIndex;
+    int EndingIndex;
 };
 struct nodePCB 
 {
@@ -54,7 +58,9 @@ struct Node* head = NULL;
 struct Node* tail = NULL;
 struct nodePCB* headPcb = NULL;
 struct nodePCB* tailPcb = NULL;
-
+struct block* headMem = NULL;
+struct Node* headWaitList = NULL;
+struct Node* tailWaitList = NULL;
 struct Node * run = NULL; // currently running
 int prevTime = 0; // to hold time to calculate quantum
 int quantum; // to hold the quantum
@@ -77,6 +83,8 @@ int totalRun=0;
 int endTime=0;
 struct WTAnode* WTAlist=NULL;
 
+void InsertWaitList(struct Node* ptr);
+void checkWait();
 void initializeSem();
 void initializeMem();
 void detachMem();
@@ -87,7 +95,7 @@ void savePCB(struct nodePCB*);
 void preempt();
 struct Node * insertProcess(struct msgbuff*);
 struct nodePCB * insertPcb(struct PCB *);
-struct nodePCB * makeProcess(struct msgbuff*, int ,int);
+struct nodePCB * makeProcess(struct msgbuff*, int ,int,int,int);
 void childDead();
 void intHandler(int sigNum);
 void loadCache(struct nodePCB* );
@@ -105,6 +113,7 @@ int main(int argc, char * argv[])
     //TODO implement the scheduler :)
     //upon termination release the clock resources. "ZIZO, DON'T FORGET"
     //print arguments
+    headMem = initializeBlocks(1024);
     for(int i=0; i<argc; i++)
     {
         printf("arg %d: %s\n", i, argv[i]);
@@ -129,8 +138,7 @@ int main(int argc, char * argv[])
             time = time2;
             RecievedID = 0;
             // Recieve the message in RecievedID
-            RecievedID = recieveMSG(ProcessQ, time); 
-            // Start Scheduling for this timestamp   
+            RecievedID = recieveMSG(ProcessQ, time);             // Start Scheduling for this timestamp   
             callAlgo(time); // specific algo handles from here
 
             if(run)
@@ -389,38 +397,127 @@ int recieveMSG(int ProcessQ, int time)
             rec_val = msgrcv(ProcessQ, &message, sizeof(message.data), 0, !IPC_NOWAIT);
         }
         RecievedID = message.data.id;
-        printf("at Time %d Recieved ID: %d\n", time, RecievedID);
+        printf("at Time %d Recieved ID: %d mem: %d\n", time, RecievedID, message.data.memsize);
+
+
         if (RecievedID != -1 && RecievedID != -2)
         {
+            //////////////Check if Possible////////////
+            int required = message.data.memsize;
+            printf("at Time %d ID: %d Requiring mem: %d\n", time, RecievedID, message.data.memsize);
+
+            struct block* mem = allocate_process(headMem, required);
+            if(mem == NULL)
+            {
+                struct Node * ptr = (struct Node*)malloc (sizeof(struct Node));
+                ptr->data = message.data;
+                ptr->next = NULL;
+                printf("Memory is full.\n");
+
+                InsertWaitList(ptr);
+            }
+            else
+            {
+                int IndexStart = mem->start_index;
+                int IndexEnd = IndexStart + mem->block_size - 1;
+                int newProcessID = fork();
+                
+                if(newProcessID == -1) {
+                    perror("Error in fork.\n");
+                }
+                else if(newProcessID == 0) {
+                    printf("child\n"); // child code
+                    char runtimechar[10];
+                    sprintf(runtimechar,"%d",message.data.runtime); // just a function that converts int to char
+                    char * args[] = {"./process", runtimechar,NULL}; // prepare the arguments
+                    execvp(args[0], args); // run 
+                    printf("Execute error.\n"); // if reached here then error
+                }
+                else {
+                    // insert in Process Table
+                    printf("parent\n"); // parent code
+                    down(remSemId); // wait till creation
+                    kill(newProcessID, SIGSTOP);
+                    struct Node * ptr = insertProcess(&message); // insert in ready queue
+                    ptr->mirror = makeProcess(&message, RecievedID, newProcessID, IndexStart, IndexEnd); // insert PCB
+                }
+            }
+            /////////////////Insertion Waiting List////////////////////////
+
+
+            ////////////////////////////////////////////////////////////////
             
-            int newProcessID = fork();
-            
-            if(newProcessID == -1) {
-                perror("Error in fork.\n");
-            }
-            else if(newProcessID == 0) {
-                printf("child\n"); // child code
-                char runtimechar[10];
-                sprintf(runtimechar,"%d",message.data.runtime); // just a function that converts int to char
-                char * args[] = {"./process", runtimechar,NULL}; // prepare the arguments
-                execvp(args[0], args); // run 
-                printf("Execute error.\n"); // if reached here then error
-            }
-            else {
-                // insert in Process Table
-                printf("parent\n"); // parent code
-                down(remSemId); // wait till creation
-                kill(newProcessID, SIGSTOP);
-                struct Node * ptr = insertProcess(&message); // insert in ready queue
-                ptr->mirror = makeProcess(&message, RecievedID, newProcessID); // insert PCB
-            }
-            Pcount++;
         }
-        
+        Pcount++;
     } 
     printf("returning \n");
     return RecievedID;
 }
+void InsertWaitList(struct Node* ptr)
+{
+    if(headWaitList==NULL)
+    {
+        headWaitList=ptr;
+        tailWaitList=ptr;
+        return;
+    }
+    tailWaitList->next=ptr;
+    tailWaitList=ptr;
+    ptr->next=NULL;
+    return;
+}
+void checkWait()
+{
+    if(headWaitList==NULL)
+    {
+        return;
+    }
+    struct Node* temp=headWaitList;
+    int required = temp->data.memsize;
+    struct block* mem = allocate_process(headMem, required);
+
+    if(mem == NULL)
+    {
+        printf("Memory is full.\n");
+        return;
+    }
+    else
+    {
+        headWaitList=headWaitList->next;
+        if(headWaitList==NULL)
+        {
+            tailWaitList=NULL;
+        }
+        struct msgbuff message;
+        message.data=temp->data;
+        int RecievedID = message.data.id;
+        int IndexStart = mem->start_index;
+        int IndexEnd = IndexStart + mem->block_size - 1;
+        int newProcessID = fork();
+        
+        if(newProcessID == -1) {
+            perror("Error in fork.\n");
+        }
+        else if(newProcessID == 0) {
+            printf("child\n"); // child code
+            char runtimechar[10];
+            sprintf(runtimechar,"%d",message.data.runtime); // just a function that converts int to char
+            char * args[] = {"./process", runtimechar,NULL}; // prepare the arguments
+            execvp(args[0], args); // run 
+            printf("Execute error.\n"); // if reached here then error
+        }
+        else {
+            // insert in Process Table
+            printf("parent\n"); // parent code
+            down(remSemId); // wait till creation
+            kill(newProcessID, SIGSTOP);
+            struct Node * ptr = insertProcess(&message); // insert in ready queue
+            ptr->mirror = makeProcess(&message, RecievedID, newProcessID, IndexStart, IndexEnd); // insert PCB
+        }
+    }
+    checkWait();
+}
+
 
 bool callAlgo(int time){
     if(algo == 1) {
@@ -466,7 +563,7 @@ void savePCB(struct nodePCB* ptr) {
     printf("Saving PCB.\n");
 }
 
-struct nodePCB * makeProcess(struct msgbuff* message,int id, int newProcessID) {
+struct nodePCB * makeProcess(struct msgbuff* message,int id, int newProcessID, int start, int end) {
     // insert in Process Table
     struct PCB processBlock;
     processBlock.id = id; // save the id
@@ -479,6 +576,8 @@ struct nodePCB * makeProcess(struct msgbuff* message,int id, int newProcessID) {
     processBlock.waiting = 0; // set waiting time
     processBlock.lastRun = 0;
     processBlock.realId = newProcessID; // el id bta3 el system
+    processBlock.startingIndex = start;
+    processBlock.EndingIndex = end;
     return insertPcb(&processBlock);
 }
 
@@ -516,6 +615,8 @@ void childDead(int time) {
     totalRun+=run->data.runtime;
     fprintf(pFile, "At time %d process %d finished arr %d total %d remain 0 wait %d TA %d WTA %.2f \n",time,run->data.id,run->data.arrival,run->data.runtime,run->mirror->data.waiting,time-run->data.arrival,(double)(time-run->data.arrival)/(double)run->data.runtime);
     endTime=time;
+    deallocate_process(headMem,run->mirror->data.startingIndex);
+    checkWait();
     removeBlock();
     free(run->mirror);
     dead = true;
@@ -684,7 +785,6 @@ bool SRTN(int now)
                 dead = false;
             }
         }
-
         if(run)
         {
             printf("there is a running process\n");
