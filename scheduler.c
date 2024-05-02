@@ -208,7 +208,7 @@ void perfWrite()
         sum+=((temp->data-avgWTA)*(temp->data-avgWTA));
         temp=temp->next;
     }
-    double Std=sqrt(sum);
+    double Std=sqrt(sum/Pcount);
     fprintf(ptr,"Std WTA = %.2f \n",Std);
     fclose(ptr);
 }
