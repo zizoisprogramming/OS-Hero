@@ -115,15 +115,16 @@ class OsSchedulerApp:
         # Call your C program here with arguments
         try:
             print(f"Executing C program with arguments: {args}")
-            process = subprocess.Popen(["/home/ziad/Project/Ours/OS-Hero/newgen"] + args)
+            process = subprocess.Popen(["/home/ziad/Project/Phase 2/OS-Hero/newgen"] + args)
             process.wait()  # Wait for the subprocess to finish
             self.error_label.config(text="Finished Execution. Generating the output file.")  # Clear the message after the subprocess completes
             self.master.after(2000, lambda: self.error_label.config(text=""))
         except KeyboardInterrupt:
             self.error_label.config(text="Finished Execution. Generating the output file.")
             self.master.after(2000, lambda: self.error_label.config(text=""))
-            self.display_file("Log file.", "/home/ziad/Project/Ours/OS-Hero/scheduler.log", "/home/ziad/Project/Ours/OS-Hero/log.png")
-            self.display_file("perf file.", "/home/ziad/Project/Ours/OS-Hero/scheduler.perf","/home/ziad/Project/Ours/OS-Hero/perf.png")
+            self.display_file("Log file.", "/home/ziad/Project/Phase 2/OS-Hero/scheduler.log", "/home/ziad/Project/Phase 2/OS-Hero/log.png")
+            self.display_file("perf file.", "/home/ziad/Project/Phase 2/OS-Hero/scheduler.perf","/home/ziad/Project/Phase 2/OS-Hero/perf.png")
+            self.display_file("Memory file.", "/home/ziad/Project/Phase 2/OS-Hero/memory.log","/home/ziad/Project/Phase 2/OS-Hero/memlog.png")
         except Exception as e:
             self.error_label.config(text=f"Failed to execute C file: {e}")
 

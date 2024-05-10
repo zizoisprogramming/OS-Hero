@@ -20,13 +20,15 @@ struct msgbuff
     struct processData data;
 };
 int ProcessQ;
-void readFile(struct Node** head, struct Node** tail) {
+void readFile(struct Node** head, struct Node** tail, char * path) {
     FILE *fptr;
-    fptr = fopen("processes.txt", "r");
+    
+    fptr = fopen(path, "r");
     if (fptr == NULL) {
         perror("Error in opening file");
         exit(1);
     }
+    
     
     int id, arrival, runtime, priority;
     char line[100]; // Assuming each line has at most 100 characters
@@ -75,27 +77,9 @@ int main(int argc, char * argv[])
     //read file processes.txt
     struct Node* head = NULL;
     struct Node* tail = NULL;
-    readFile(&head, &tail);
+    readFile(&head, &tail, argv[3]);
     printProcesses(head);
 
-    // 2. Ask the user for the chosen scheduling algorithm and its parameters, if there are any.
-    printf("Please enter the chosen scheduling algorithm and its parameters\n");
-    printf("1. HPF\n");
-    printf("2. SRTN\n");
-    printf("3. RR \n");
-    int chosenAlgorithm, quantum;
-    quantum = 0;
-    scanf("%d", &chosenAlgorithm);
-    if (chosenAlgorithm == 3)
-    {
-        printf("Please enter the quantum\n");
-        scanf("%d", &quantum);
-    }
-    if (chosenAlgorithm != 1 && chosenAlgorithm != 2 && chosenAlgorithm != 3)
-    {
-        printf("Invalid input\n");
-        exit(1);
-    }
     key_t key_id;
 
 
@@ -113,10 +97,10 @@ int main(int argc, char * argv[])
     {
         
             char algorithm [10];
-            sprintf(algorithm, "%d", chosenAlgorithm);
+            sprintf(algorithm, "%d", atoi(argv[1]));
             char quantumStr[10];
-            sprintf(quantumStr, "%d", quantum);
-            char* args[] = {"./scheduler", algorithm, quantumStr, NULL};
+            sprintf(quantumStr, "%d", atoi(argv[2]));
+            char* args[] = {"/home/ziad/Project/Phase 2/OS-Hero/scheduler", algorithm, quantumStr, NULL};
 
             execvp(args[0], args);
 
@@ -130,7 +114,7 @@ int main(int argc, char * argv[])
         }
         else if (pidClk == 0)
         {
-            char * args[] = {"./clk", NULL};
+            char * args[] = {"/home/ziad/Project/Phase 2/OS-Hero/clk", NULL};
             execvp(args[0], args);
         }
     }
