@@ -443,7 +443,7 @@ int recieveMSG(int ProcessQ, int time)
                     down(remSemId); // wait till creation
                     kill(newProcessID, SIGSTOP);
                     struct Node * ptr = insertProcess(&message); // insert in ready queue
-                    fprintf(memoryFile,"At time %d allocated %d bytes for process %d from %d to %d\n",time,mem->block_size,RecievedID,IndexStart,IndexEnd);
+                    fprintf(memoryFile,"At time %d allocated %d bytes for process %d from %d to %d\n",time,message.data.memsize,RecievedID,IndexStart,IndexEnd);
                     ptr->mirror = makeProcess(&message, RecievedID, newProcessID, IndexStart, IndexEnd); // insert PCB
                 }
             }
@@ -516,7 +516,10 @@ void checkWait(int time)
             printf("parent\n"); // parent code
             down(remSemId); // wait till creation
             kill(newProcessID, SIGSTOP);
-             fprintf(memoryFile,"At time %d allocated %d bytes for process %d from %d to %d\n",time,mem->block_size,RecievedID,IndexStart,IndexEnd);
+            // fprintf(memoryFile,"At time %d allocated %d bytes for process %d from %d to %d\n",time,mem->block_size,RecievedID,IndexStart,IndexEnd);    //old
+             // new
+            fprintf(memoryFile,"At time %d allocated %d bytes for process %d from %d to %d\n",time,message.data.memsize,RecievedID,IndexStart,IndexEnd);    //old
+
             struct Node * ptr = insertProcess(&message); // insert in ready queue
             ptr->mirror = makeProcess(&message, RecievedID, newProcessID, IndexStart, IndexEnd); // insert PCB
         }
