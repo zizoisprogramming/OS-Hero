@@ -477,54 +477,70 @@ void checkWait(int time)
         return;
     }
     struct Node* temp=headWaitList;
-    int required = temp->data.memsize;
-    struct block* mem = allocate_process(headMem, required);
+    struct Node* prev=headWaitList;
 
-    if(mem == NULL)
+    while(temp)
     {
-        printf("Memory is full.\n");
-        return;
-    }
-    else
-    {
-        headWaitList=headWaitList->next;
-        if(headWaitList==NULL)
+        int required = temp->data.memsize;
+        struct block* mem = allocate_process(headMem, required);
+
+        if(mem != NULL)
         {
-            tailWaitList=NULL;
-        }
-        struct msgbuff message;
-        message.data=temp->data;
-        int RecievedID = message.data.id;
-        int IndexStart = mem->start_index;
-        int IndexEnd = IndexStart + mem->block_size - 1;
-        
-        int newProcessID = fork();
-        
-        if(newProcessID == -1) {
-            perror("Error in fork.\n");
-        }
-        else if(newProcessID == 0) {
-            printf("child\n"); // child code
-            char runtimechar[10];
-            sprintf(runtimechar,"%d",message.data.runtime); // just a function that converts int to char
-            char * args[] = {"./process", runtimechar,NULL}; // prepare the arguments
-            execvp(args[0], args); // run 
-            printf("Execute error.\n"); // if reached here then error
-        }
-        else {
-            // insert in Process Table
-            printf("parent\n"); // parent code
-            down(remSemId); // wait till creation
-            kill(newProcessID, SIGSTOP);
-            // fprintf(memoryFile,"At time %d allocated %d bytes for process %d from %d to %d\n",time,mem->block_size,RecievedID,IndexStart,IndexEnd);    //old
-             // new
-            fprintf(memoryFile,"At time %d allocated %d bytes for process %d from %d to %d\n",time,message.data.memsize,RecievedID,IndexStart,IndexEnd);    //old
+            if(temp==headWaitList)
+            {
+                headWaitList=headWaitList->next;
+                if(headWaitList==NULL)
+                {
+                    tailWaitList=NULL;
+                }
+            }
+            else
+            {
+                prev->next=temp->next;
+                if(temp==tailWaitList)
+                {
+                    tailWaitList=prev;
+                }
+            }
+            struct msgbuff message;
+            message.data=temp->data;
+            int RecievedID = message.data.id;
+            int IndexStart = mem->start_index;
+            int IndexEnd = IndexStart + mem->block_size - 1;
+            
+            int newProcessID = fork();
+            
+            if(newProcessID == -1) {
+                perror("Error in fork.\n");
+            }
+            else if(newProcessID == 0) {
+                printf("child\n"); // child code
+                char runtimechar[10];
+                sprintf(runtimechar,"%d",message.data.runtime); // just a function that converts int to char
+                char * args[] = {"./process", runtimechar,NULL}; // prepare the arguments
+                execvp(args[0], args); // run 
+                printf("Execute error.\n"); // if reached here then error
+            }
+            else {
+                // insert in Process Table
+                printf("parent\n"); // parent code
+                down(remSemId); // wait till creation
+                kill(newProcessID, SIGSTOP);
+                // fprintf(memoryFile,"At time %d allocated %d bytes for process %d from %d to %d\n",time,mem->block_size,RecievedID,IndexStart,IndexEnd);    //old
+                // new
+                fprintf(memoryFile,"At time %d allocated %d bytes for process %d from %d to %d\n",time,message.data.memsize,RecievedID,IndexStart,IndexEnd);    //old
 
-            struct Node * ptr = insertProcess(&message); // insert in ready queue
-            ptr->mirror = makeProcess(&message, RecievedID, newProcessID, IndexStart, IndexEnd); // insert PCB
+                struct Node * ptr = insertProcess(&message); // insert in ready queue
+                ptr->mirror = makeProcess(&message, RecievedID, newProcessID, IndexStart, IndexEnd); // insert PCB
+            }
         }
+        else
+        {
+        prev=temp;
+        }
+        temp=temp->next;
+
     }
-    checkWait(time);
 }
 
 
